@@ -1,0 +1,8 @@
+
+{
+  "name": "HemoSync - Smart Blood Management",
+  "description": "A comprehensive blood donation management platform featuring real-time donor tracking, smart matching powered by AI, and interactive inventory visualization.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

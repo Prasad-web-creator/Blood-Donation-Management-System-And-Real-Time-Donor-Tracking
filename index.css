@@ -1,0 +1,96 @@
+:root {
+  --bg-primary: #f9fafb;
+  --bg-secondary: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --border-color: #e5e7eb;
+  --accent-color: #dc2626;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+}
+
+.theme-dark {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --border-color: #374151;
+  --accent-color: #ef4444;
+  --sidebar-bg: #111827;
+  --card-bg: #1f2937;
+}
+
+.theme-crimson {
+  --bg-primary: #450a0a;
+  --bg-secondary: #7f1d1d;
+  --text-primary: #fef2f2;
+  --text-secondary: #fecaca;
+  --border-color: #991b1b;
+  --accent-color: #fca5a5;
+  --sidebar-bg: #450a0a;
+  --card-bg: #7f1d1d;
+}
+
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Transition for all theme-aware elements */
+.bg-white, .bg-gray-50, .bg-gray-100 {
+  background-color: var(--bg-secondary) !important;
+}
+
+.text-gray-900, .text-gray-800 {
+  color: var(--text-primary) !important;
+}
+
+.text-gray-500, .text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+.border-gray-100, .border-gray-200, .border-gray-300 {
+  border-color: var(--border-color) !important;
+}
+
+/* Custom Overrides for Sidebars and Cards */
+aside, .sidebar {
+  background-color: var(--sidebar-bg) !important;
+}
+
+.card, .rounded-2xl, .rounded-xl {
+  background-color: var(--card-bg);
+}
+
+header {
+  background-color: var(--bg-secondary) !important;
+}
+
+input, select, textarea {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Specific component fixes for dark/crimson themes */
+.dark .text-gray-400 {
+    color: #6b7280 !important;
+}
+
+.theme-crimson .bg-red-50 {
+    background-color: rgba(254, 242, 242, 0.1) !important;
+    color: #fca5a5 !important;
+}

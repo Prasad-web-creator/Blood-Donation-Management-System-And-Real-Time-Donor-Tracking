@@ -1,0 +1,10 @@
+﻿services/firebase.ts(15,23): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+services/firebase.ts(16,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+services/firebase.ts(17,26): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+services/firebase.ts(18,30): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+services/firebase.ts(19,34): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+services/firebase.ts(20,22): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+views/Auth.tsx(39,8): error TS2741: Property '"aria-label"' is missing in type '{ position: "top-right"; autoClose: number; hideProgressBar: false; }' but required in type 'ToastContainerProps'.
+views/Dashboard.tsx(57,30): error TS2339: Property 'bloodGroup' does not exist on type '{ id: string; }'.
+views/DonorTracking.tsx(283,39): error TS2353: Object literal may only specify known properties, and 'right' does not exist in type 'ScrollToOptions'.
+views/Notifications.tsx(94,32): error TS2304: Cannot find name 'MessageCircle'.
