@@ -161,22 +161,6 @@ const Inventory: React.FC = () => {
           </div>
         ))}
       </div>
-
-      {/* Expiry Tracking Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-bold flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-red-600" />
-            Batch Expiry Tracking
-          </h3>
-          <span className="text-xs text-orange-600 bg-orange-50 px-3 py-1 rounded-full font-bold">
-            0 batches expiring soon
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <div className="p-6 text-sm text-gray-500 bg-gray-50/30">No batch data available at this moment.</div>
-        </div>
-      </div>
     </div>
   );
 };
