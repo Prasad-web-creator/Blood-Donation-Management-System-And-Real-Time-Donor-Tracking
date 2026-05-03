@@ -215,6 +215,32 @@ const BloodRequests: React.FC<{
     setLoadingMatch(false);
   };
 
+  const handleDownload = async (url: string) => {
+    try {
+      // Try fetching to force download if CORS allows
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `medical-proof-${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      // Fallback: Open in new tab if fetch fails (CORS issue)
+      window.open(url, '_blank');
+    }
+  };
+
+  const openProofViewer = (proofs: string[]) => {
+    setActiveProofs(proofs);
+    setActiveProofIndex(0);
+    setZoomScale(1);
+    setShowProofViewer(true);
+  };
+
   const filteredRequests = requests.filter((req) => {
     // Search filter
     if (searchTerm.trim()) {

@@ -3,6 +3,7 @@ import { MapPin, Navigation, Image as ImageIcon, X, Upload } from 'lucide-react'
 import { BloodType } from '../types';
 import { addDonorToFirestore } from '../services/firebase';
 import { toast } from 'react-toastify';
+import { useAuth } from '../services/auth';
 
 const bloodTypes: BloodType[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -180,21 +181,22 @@ const DonateNow: React.FC = () => {
     const newProofs: string[] = [];
     const fileList = Array.from(files).slice(0, 5);
 
-    const promises = fileList.map(file => {
-      return new Promise<void>((resolve) => {
+    const readAsDataURL = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => {
-          newProofs.push(reader.result as string);
-          resolve();
-        };
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
         reader.readAsDataURL(file);
       });
-    });
+    };
 
-    Promise.all(promises).then(() => {
-      setHealthProofs(prev => [...prev, ...newProofs].slice(0, 5));
+    Promise.all(fileList.map(readAsDataURL)).then((results) => {
+      setHealthProofs(prev => [...prev, ...results].slice(0, 5));
       setUploading(false);
       setErrors(p => ({...p, healthProofs: ''}));
+    }).catch(err => {
+      console.error("Image upload failed:", err);
+      setUploading(false);
     });
   };
 
