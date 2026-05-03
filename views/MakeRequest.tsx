@@ -117,13 +117,20 @@ const MakeRequest: React.FC = () => {
         createdByUserId: user?.uid,
       });
       
-      toast.success('Blood request submitted successfully!');
+      toast.success('Blood request submitted successfully!', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       reset();
       // navigate to requests tab
       window.dispatchEvent(new CustomEvent('navigateToTab', { detail: { tab: 'requests' } }));
     } catch (err) {
       console.error('Failed to submit request', err);
-      toast.error('Failed to submit request');
+      toast.error('Failed to submit request. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

@@ -233,6 +233,15 @@ export const updateUserRole = async (userId: string, role: 'admin' | 'user') => 
   }
 };
 
+export const deleteUserById = async (userId: string) => {
+  try {
+    await deleteDoc(doc(db, 'users', userId));
+  } catch (err) {
+    console.error('Error deleting user from Firestore:', err);
+    throw err;
+  }
+};
+
 export { db };
 
 export type User = FirebaseUser | null;

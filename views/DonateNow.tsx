@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Navigation } from 'lucide-react';
+import { MapPin, Navigation, Image as ImageIcon, X, Upload } from 'lucide-react';
 import { BloodType } from '../types';
 import { addDonorToFirestore } from '../services/firebase';
 import { toast } from 'react-toastify';
@@ -15,19 +15,21 @@ const DonateNow: React.FC = () => {
   const [gender, setGender] = useState<'male'|'female'|'other'|''>('');
   const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
+  const [healthProofs, setHealthProofs] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [statusActive, setStatusActive] = useState(true);
   const [lastDonation, setLastDonation] = useState('');
   const [weight, setWeight] = useState<number | ''>('');
   const [medicalConditions, setMedicalConditions] = useState('');
   const [notes, setNotes] = useState('');
-  const [success, setSuccess] = useState<string | null>(null);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   const resetForm = () => {
     setName(''); setAge(''); setBloodGroup('O+'); setContact(''); setEmail(''); setGender('');
-    setAddress(''); setCoordinates(null); setStatusActive(true); setLastDonation(''); setWeight(''); setMedicalConditions(''); setNotes('');
+    setAddress(''); setCoordinates(null); setHealthProofs([]); setStatusActive(true); setLastDonation(''); setWeight(''); setMedicalConditions(''); setNotes('');
     setErrors({});
   };
 
@@ -48,6 +50,8 @@ const DonateNow: React.FC = () => {
     if (!address.trim()) newErrors.address = "Full address is required.";
 
     if (!coordinates) newErrors.coordinates = "Please provide your exact location to continue registration.";
+
+    if (healthProofs.length === 0) newErrors.healthProofs = "At least one health proof image is required.";
 
     if (!weight) newErrors.weight = "Weight is required.";
     else if (weight < 50) newErrors.weight = "Weight must be at least 50 kg to donate.";
@@ -92,6 +96,7 @@ const DonateNow: React.FC = () => {
       gender,
       address,
       coordinates,
+      healthProofs,
       status: statusActive ? 'active' : 'inactive',
       lastDonation: lastDonation || null,
       weight: weight || null,
@@ -101,12 +106,18 @@ const DonateNow: React.FC = () => {
 
     try {
       await addDonorToFirestore(donor);
-      setSuccess('Donor registration saved successfully');
+      toast.success('Donor registration saved successfully!', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       resetForm();
-      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error('Failed to save donor to Firestore', err);
-      setSuccess('Failed to save donor');
+      toast.error('Failed to save donor information. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -134,7 +145,6 @@ const DonateNow: React.FC = () => {
       async (error) => {
         console.warn("Browser Geolocation failed, trying IP fallback:", error);
         
-        // Fallback to IP geolocation if browser API fails
         try {
           const response = await fetch('https://get.geojs.io/v1/ip/geo.json');
           if (response.ok) {
@@ -160,6 +170,36 @@ const DonateNow: React.FC = () => {
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    setUploading(true);
+    const newProofs: string[] = [];
+    const fileList = Array.from(files).slice(0, 5);
+
+    const promises = fileList.map(file => {
+      return new Promise<void>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          newProofs.push(reader.result as string);
+          resolve();
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(promises).then(() => {
+      setHealthProofs(prev => [...prev, ...newProofs].slice(0, 5));
+      setUploading(false);
+      setErrors(p => ({...p, healthProofs: ''}));
+    });
+  };
+
+  const removeProof = (index: number) => {
+    setHealthProofs(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -215,7 +255,6 @@ const DonateNow: React.FC = () => {
           {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
         </div>
         
-        {/* Exact Geolocation */}
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
             Exact Location <span className="text-red-500">*</span>
@@ -248,7 +287,54 @@ const DonateNow: React.FC = () => {
           {errors.coordinates && <p className="text-red-500 text-xs mt-1">{errors.coordinates}</p>}
         </div>
 
-        <div className="flex items-center gap-3 md:mt-8">
+        <div className="col-span-1 md:col-span-2">
+          <label className="text-sm font-medium text-gray-700 flex items-center gap-1 mb-2">
+            Health Proof Documents (Reports/ID) <span className="text-red-500">*</span>
+          </label>
+          <div className="flex flex-col gap-4">
+            <div className={`relative border-2 border-dashed rounded-xl p-6 transition-all ${errors.healthProofs ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-red-300 bg-gray-50'}`}>
+              <input 
+                type="file" 
+                multiple 
+                accept="image/*" 
+                onChange={handleImageUpload}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              />
+              <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
+                <div className="p-3 bg-white rounded-full shadow-sm">
+                  <Upload className="w-6 h-6 text-red-500" />
+                </div>
+                <p className="text-sm font-bold">Click to upload health proofs</p>
+                <p className="text-[10px]">Upload medical reports or identity proof (Max 5 images)</p>
+              </div>
+            </div>
+
+            {healthProofs.length > 0 && (
+              <div className="flex flex-wrap gap-3">
+                {healthProofs.map((src, idx) => (
+                  <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 shadow-sm group">
+                    <img src={src} alt="Proof" className="w-full h-full object-cover" />
+                    <button 
+                      type="button"
+                      onClick={() => removeProof(idx)}
+                      className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {uploading && (
+                  <div className="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center animate-pulse">
+                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+            )}
+            {errors.healthProofs && <p className="text-red-500 text-xs">{errors.healthProofs}</p>}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
           <input id="statusActive" checked={statusActive} onChange={e => setStatusActive(e.target.checked)} type="checkbox" />
           <label htmlFor="statusActive" className="text-sm">Available/Active Donor</label>
         </div>
@@ -288,7 +374,7 @@ const DonateNow: React.FC = () => {
         </div>
       </form>
 
-      {success && <div className="mt-4 text-sm text-green-600">{success}</div>}
+
     </div>
   );
 };

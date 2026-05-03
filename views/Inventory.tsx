@@ -64,7 +64,7 @@ const Inventory: React.FC = () => {
   const totals: Record<string, number> = {};
   const latestByType: Record<string, number> = {};
   donors.forEach((d) => {
-    const bg = (d.bloodGroup || d.bloodGroup?.toString() || '').toString();
+    const bg = (d.bloodType || d.bloodGroup || '').toString();
     if (!bg) return;
     totals[bg] = (totals[bg] || 0) + 1;
     // derive timestamp in ms
@@ -77,10 +77,38 @@ const Inventory: React.FC = () => {
     latestByType[bg] = Math.max(latestByType[bg] || 0, t || 0);
   });
 
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;
+
   const inventoryData = bloodTypes.map((type) => {
-    const units = totals[type] || 0;
+    const typeDonors = donors.filter(d => (d.bloodType || d.bloodGroup) === type);
+    const units = typeDonors.length;
+    
+    // Calculate Trend: (New this week - New last week) / (New last week or 1) * 100
+    const newThisWeek = typeDonors.filter(d => {
+      let t = 0;
+      if (d.createdAt?.toDate) t = d.createdAt.toDate().getTime();
+      else if (d.createdAt?.seconds) t = d.createdAt.seconds * 1000;
+      return t > sevenDaysAgo;
+    }).length;
+
+    const newLastWeek = typeDonors.filter(d => {
+      let t = 0;
+      if (d.createdAt?.toDate) t = d.createdAt.toDate().getTime();
+      else if (d.createdAt?.seconds) t = d.createdAt.seconds * 1000;
+      return t > fourteenDaysAgo && t <= sevenDaysAgo;
+    }).length;
+
+    // Trend calculation
+    let trend = 0;
+    if (newLastWeek > 0) {
+      trend = Math.round(((newThisWeek - newLastWeek) / newLastWeek) * 100);
+    } else if (newThisWeek > 0) {
+      trend = 100; // 100% growth if we had 0 last week but some this week
+    }
+
     const status = units === 0 ? 'critical' : units <= 5 ? 'low' : 'optimal';
-    const trend = 0;
     const lastUpdated = latestByType[type] ? new Date(latestByType[type]).toLocaleString() : '—';
     return { type, units, status, trend, lastUpdated } as InventoryItem;
   });

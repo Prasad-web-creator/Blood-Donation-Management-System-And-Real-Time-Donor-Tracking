@@ -94,3 +94,12 @@ input, select, textarea {
     background-color: rgba(254, 242, 242, 0.1) !important;
     color: #fca5a5 !important;
 }
+
+/* Scrollbar Hide Utility */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}

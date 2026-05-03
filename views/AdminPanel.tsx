@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Activity, FileText, AlertTriangle, Check, X, Download, Trash2, ShieldCheck, UserPlus } from 'lucide-react';
-import { listenToDonors, deleteDonorById, deleteRequestById, listenToUsers, updateUserRole } from '../services/firebase';
+import { listenToDonors, deleteDonorById, deleteRequestById, listenToUsers, updateUserRole, deleteUserById } from '../services/firebase';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { toast } from 'react-toastify';
@@ -28,11 +28,16 @@ const AdminPanel: React.FC = () => {
   const [promoteEmail, setPromoteEmail] = useState('');
   const [isPromoting, setIsPromoting] = useState(false);
   
-  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; type: 'donor' | 'request' | 'complaint' | null; targetId: string | null }>({
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; type: 'donor' | 'request' | 'complaint' | 'user' | null; targetId: string | string[] | null }>({
     isOpen: false,
     type: null,
     targetId: null
   });
+
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedDonors, setSelectedDonors] = useState<string[]>([]);
+  const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
+  const [selectedComplaints, setSelectedComplaints] = useState<string[]>([]);
   
   const [loading, setLoading] = useState(true);
 
@@ -106,6 +111,30 @@ const AdminPanel: React.FC = () => {
     setDeleteModal({ isOpen: true, type: 'complaint', targetId: complaintId });
   };
 
+  const handleDeleteUser = (userId: string) => {
+    setDeleteModal({ isOpen: true, type: 'user', targetId: userId });
+  };
+
+  const handleBulkDeleteUsers = () => {
+    if (selectedUsers.length === 0) return;
+    setDeleteModal({ isOpen: true, type: 'user', targetId: selectedUsers });
+  };
+
+  const handleBulkDeleteDonors = () => {
+    if (selectedDonors.length === 0) return;
+    setDeleteModal({ isOpen: true, type: 'donor', targetId: selectedDonors });
+  };
+
+  const handleBulkDeleteRequests = () => {
+    if (selectedRequests.length === 0) return;
+    setDeleteModal({ isOpen: true, type: 'request', targetId: selectedRequests });
+  };
+
+  const handleBulkDeleteComplaints = () => {
+    if (selectedComplaints.length === 0) return;
+    setDeleteModal({ isOpen: true, type: 'complaint', targetId: selectedComplaints });
+  };
+
   const executeDelete = async () => {
     if (!deleteModal.targetId || !deleteModal.type) return;
 
@@ -116,21 +145,81 @@ const AdminPanel: React.FC = () => {
 
     try {
       if (type === 'donor') {
-        await deleteDonorById(id);
-        toast.success('SUCCESS: Donor record removed from database.');
-      } else if (type === 'request') {
-        await deleteRequestById(id);
-        toast.success('SUCCESS: Blood request removed from database.');
-      } else if (type === 'complaint') {
-        const complaint = complaints.find(c => c.id === id);
-        if (!complaint) return;
-        if (complaint.status === 'accepted') {
-          const complaintRef = doc(db, 'complaints', id);
-          await updateDoc(complaintRef, { hiddenFromAdmin: true });
-          toast.success('Complaint cleared from admin view.');
+        if (Array.isArray(id)) {
+          const promises = id.map(uid => deleteDonorById(uid));
+          await Promise.all(promises);
+          setSelectedDonors([]);
+          toast.success(`SUCCESS: ${id.length} donor records removed.`);
         } else {
-          await deleteDoc(doc(db, 'complaints', id));
-          toast.success('Complaint deleted permanently.');
+          await deleteDonorById(id);
+          setSelectedDonors(prev => prev.filter(uid => uid !== id));
+          toast.success('SUCCESS: Donor record removed from database.');
+        }
+      } else if (type === 'request') {
+        if (Array.isArray(id)) {
+          const promises = id.map(uid => deleteRequestById(uid));
+          await Promise.all(promises);
+          setSelectedRequests([]);
+          toast.success(`SUCCESS: ${id.length} requests removed.`);
+        } else {
+          await deleteRequestById(id);
+          setSelectedRequests(prev => prev.filter(uid => uid !== id));
+          toast.success('SUCCESS: Blood request removed from database.');
+        }
+      } else if (type === 'user') {
+        if (Array.isArray(id)) {
+          // Bulk delete users - Filter out any admins just in case
+          const nonAdminIds = id.filter(uid => {
+            const u = users.find(user => user.id === uid);
+            return u?.role !== 'admin';
+          });
+          
+          if (nonAdminIds.length === 0) {
+            toast.error('ACTION BLOCKED: Administrators strictly cannot be deleted.');
+            return;
+          }
+
+          const promises = nonAdminIds.map(uid => deleteUserById(uid));
+          await Promise.all(promises);
+          setSelectedUsers([]);
+          toast.success(`SUCCESS: ${nonAdminIds.length} users removed. Administrators were skipped.`);
+        } else {
+          // Single delete user
+          const userToDelete = users.find(u => u.id === id);
+          if (userToDelete?.role === 'admin') {
+            toast.error('ACTION BLOCKED: Administrators strictly cannot be deleted.');
+            return;
+          }
+          await deleteUserById(id);
+          setSelectedUsers(prev => prev.filter(uid => uid !== id));
+          toast.success('SUCCESS: User profile removed from database.');
+        }
+      } else if (type === 'complaint') {
+        if (Array.isArray(id)) {
+          // Bulk handle complaints
+          const promises = id.map(async (cid) => {
+            const comp = complaints.find(c => c.id === cid);
+            if (!comp) return;
+            if (comp.status === 'accepted') {
+              return updateDoc(doc(db, 'complaints', cid), { hiddenFromAdmin: true });
+            } else {
+              return deleteDoc(doc(db, 'complaints', cid));
+            }
+          });
+          await Promise.all(promises);
+          setSelectedComplaints([]);
+          toast.success(`SUCCESS: ${id.length} complaints processed.`);
+        } else {
+          const complaint = complaints.find(c => c.id === id);
+          if (!complaint) return;
+          if (complaint.status === 'accepted') {
+            const complaintRef = doc(db, 'complaints', id as string);
+            await updateDoc(complaintRef, { hiddenFromAdmin: true });
+            toast.success('Complaint cleared from admin view.');
+          } else {
+            await deleteDoc(doc(db, 'complaints', id as string));
+            toast.success('Complaint deleted permanently.');
+          }
         }
       }
     } catch (error) {
@@ -237,7 +326,10 @@ const AdminPanel: React.FC = () => {
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">Delete Record</h3>
               <p className="text-base text-gray-500 font-medium leading-relaxed">
-                Are you absolutely sure you want to permanently delete this <span className="font-bold text-gray-800">{deleteModal.type}</span>? This action cannot be undone.
+                {Array.isArray(deleteModal.targetId) 
+                  ? `Are you absolutely sure you want to permanently delete these ${deleteModal.targetId.length} ${deleteModal.type}s?`
+                  : `Are you absolutely sure you want to permanently delete this ${deleteModal.type}?`
+                } This action cannot be undone.
               </p>
             </div>
             <div className="flex bg-gray-50 p-4 gap-3 border-t border-gray-100">
@@ -300,7 +392,18 @@ const AdminPanel: React.FC = () => {
             {/* DONORS TAB */}
             {activeTab === 'donors' && (
               <div>
-                <h3 className="text-xl font-bold mb-4">Registry of All Donors</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <h3 className="text-xl font-bold">Registry of All Donors</h3>
+                  {selectedDonors.length > 0 && (
+                    <button 
+                      onClick={handleBulkDeleteDonors}
+                      className="px-4 py-2 bg-red-100 text-red-600 rounded-xl text-sm font-bold hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete ({selectedDonors.length})
+                    </button>
+                  )}
+                </div>
                 <div className="overflow-x-auto">
                   {donors.length === 0 ? (
                     <div className="text-center p-12 bg-gray-50 rounded-2xl border border-gray-100 border-dashed mt-4">
@@ -312,7 +415,18 @@ const AdminPanel: React.FC = () => {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
-                          <th className="p-4 rounded-tl-lg font-semibold">Name</th>
+                          <th className="p-4 rounded-tl-lg font-semibold w-10">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                              checked={donors.length > 0 && selectedDonors.length === donors.length}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedDonors(donors.map(d => d.id));
+                                else setSelectedDonors([]);
+                              }}
+                            />
+                          </th>
+                          <th className="p-4 font-semibold">Name</th>
                           <th className="p-4 font-semibold">Blood Group</th>
                           <th className="p-4 font-semibold">Contact</th>
                           <th className="p-4 font-semibold">Status</th>
@@ -321,32 +435,59 @@ const AdminPanel: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {donors.map((donor) => (
-                          <tr key={donor.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="p-4 font-bold text-gray-900">{donor.name || 'Unknown'}</td>
-                            <td className="p-4 font-semibold text-red-600">{donor.bloodType || donor.bloodGroup}</td>
-                            <td className="p-4 text-gray-600 text-sm">{donor.contact || donor.phone || donor.phoneNumber || 'N/A'}</td>
-                            <td className="p-4">
-                              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                donor.status === 'active' || donor.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {donor.status || 'available'}
-                              </span>
-                            </td>
-                            <td className="p-4 text-sm font-semibold text-gray-700">
-                              {donor.lastDonation || 'Never'}
-                            </td>
-                            <td className="p-4 text-right pr-6">
-                              <button 
-                                onClick={() => handleDeleteDonor(donor.id)}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                title="Delete Donor"
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {donors.map((donor) => {
+                          // Check for verified complaints using both Firestore ID and internal D-ID for backward compatibility
+                          const isFlagged = complaints.some(c => 
+                            (c.donorId === donor.id || (donor as any).id === c.donorId) && 
+                            c.status === 'accepted'
+                          );
+                          return (
+                            <tr key={donor.id} className={`hover:bg-gray-50 transition-colors ${selectedDonors.includes(donor.id) ? 'bg-red-50/30' : ''} ${isFlagged ? 'bg-red-50 border-l-4 border-l-red-500' : ''}`}>
+                              <td className="p-4">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                  checked={selectedDonors.includes(donor.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setSelectedDonors(prev => [...prev, donor.id]);
+                                    else setSelectedDonors(prev => prev.filter(id => id !== donor.id));
+                                  }}
+                                />
+                              </td>
+                              <td className="p-4 font-bold text-gray-900">
+                                <div className="flex items-center gap-2">
+                                  <span>{donor.name || 'Unknown'}</span>
+                                  {isFlagged && (
+                                    <span className="px-2 py-0.5 bg-red-600 text-white text-[9px] font-black rounded uppercase tracking-widest">
+                                      Flagged
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-4 font-semibold text-red-600">{donor.bloodType || donor.bloodGroup}</td>
+                              <td className="p-4 text-gray-600 text-sm">{donor.contact || donor.phone || donor.phoneNumber || 'N/A'}</td>
+                              <td className="p-4">
+                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  donor.status === 'active' || donor.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {donor.status || 'available'}
+                                </span>
+                              </td>
+                              <td className="p-4 text-sm font-semibold text-gray-700">
+                                {donor.lastDonation || 'Never'}
+                              </td>
+                              <td className="p-4 text-right pr-6">
+                                <button 
+                                  onClick={() => handleDeleteDonor(donor.id)}
+                                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                  title="Delete Donor"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -357,7 +498,18 @@ const AdminPanel: React.FC = () => {
             {/* REQUESTS TAB */}
             {activeTab === 'requests' && (
               <div>
-                <h3 className="text-xl font-bold mb-4">All Blood Requests</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <h3 className="text-xl font-bold">All Blood Requests</h3>
+                  {selectedRequests.length > 0 && (
+                    <button 
+                      onClick={handleBulkDeleteRequests}
+                      className="px-4 py-2 bg-red-100 text-red-600 rounded-xl text-sm font-bold hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete ({selectedRequests.length})
+                    </button>
+                  )}
+                </div>
                 <div className="overflow-x-auto">
                   {requests.length === 0 ? (
                     <div className="text-center p-12 bg-gray-50 rounded-2xl border border-gray-100 border-dashed mt-4">
@@ -369,7 +521,18 @@ const AdminPanel: React.FC = () => {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
-                          <th className="p-4 rounded-tl-lg font-semibold">Hospital / Requester</th>
+                          <th className="p-4 rounded-tl-lg font-semibold w-10">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                              checked={requests.length > 0 && selectedRequests.length === requests.length}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedRequests(requests.map(r => r.id));
+                                else setSelectedRequests([]);
+                              }}
+                            />
+                          </th>
+                          <th className="p-4 font-semibold">Hospital / Requester</th>
                           <th className="p-4 font-semibold">Blood Group</th>
                           <th className="p-4 font-semibold">Units</th>
                           <th className="p-4 font-semibold">Contact</th>
@@ -379,7 +542,18 @@ const AdminPanel: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {requests.map((req) => (
-                          <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                          <tr key={req.id} className={`hover:bg-gray-50 transition-colors ${selectedRequests.includes(req.id) ? 'bg-red-50/30' : ''}`}>
+                            <td className="p-4">
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                checked={selectedRequests.includes(req.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedRequests(prev => [...prev, req.id]);
+                                  else setSelectedRequests(prev => prev.filter(id => id !== req.id));
+                                }}
+                              />
+                            </td>
                             <td className="p-4 font-bold text-gray-900">
                               {req.hospital || (req as any).requesterName || 'Unknown'}
                             </td>
@@ -414,7 +588,35 @@ const AdminPanel: React.FC = () => {
             {/* COMPLAINTS TAB */}
             {activeTab === 'complaints' && (
               <div>
-                <h3 className="text-xl font-bold mb-4">Donor Complaints Management</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xl font-bold">Donor Complaints Management</h3>
+                    {complaints.filter(c => !c.hiddenFromAdmin).length > 0 && (
+                      <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-lg">
+                        <input 
+                          type="checkbox" 
+                          id="selectAllComplaints"
+                          className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          checked={complaints.filter(c => !c.hiddenFromAdmin).length > 0 && selectedComplaints.length === complaints.filter(c => !c.hiddenFromAdmin).length}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedComplaints(complaints.filter(c => !c.hiddenFromAdmin).map(c => c.id));
+                            else setSelectedComplaints([]);
+                          }}
+                        />
+                        <label htmlFor="selectAllComplaints" className="text-xs font-bold text-gray-600 cursor-pointer">Select All</label>
+                      </div>
+                    )}
+                  </div>
+                  {selectedComplaints.length > 0 && (
+                    <button 
+                      onClick={handleBulkDeleteComplaints}
+                      className="px-4 py-2 bg-red-100 text-red-600 rounded-xl text-sm font-bold hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete ({selectedComplaints.length})
+                    </button>
+                  )}
+                </div>
                 <div className="grid gap-4">
                   {(() => {
                     const activeComplaints = complaints.filter(c => !c.hiddenFromAdmin);
@@ -426,58 +628,71 @@ const AdminPanel: React.FC = () => {
                       </div>
                     ) : (
                       activeComplaints.map(complaint => (
-                      <div key={complaint.id} className={`p-5 rounded-xl border ${complaint.status === 'pending' ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="font-bold text-gray-900">Complaint against Donor: <span className="font-semibold text-red-600">{complaint.donorName || 'Unknown'}</span></h4>
-                            <p className="text-xs text-gray-500 mt-1">
-                              Target ID: <span className="font-mono">{complaint.donorId}</span> • 
-                              Reported by: {complaint.reporterName || complaint.reporterEmail || 'Anonymous'}
-                            </p>
-                          </div>
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                            complaint.status === 'pending' ? 'bg-orange-200 text-orange-800' : 
-                            complaint.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>
-                            {complaint.status || 'pending'}
-                          </span>
+                      <div key={complaint.id} className={`p-5 rounded-xl border relative transition-all ${selectedComplaints.includes(complaint.id) ? 'bg-red-50 border-red-200 shadow-sm' : complaint.status === 'pending' ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
+                        <div className="absolute top-5 left-5">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            checked={selectedComplaints.includes(complaint.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedComplaints(prev => [...prev, complaint.id]);
+                              else setSelectedComplaints(prev => prev.filter(id => id !== complaint.id));
+                            }}
+                          />
                         </div>
-                        <p className="text-sm text-gray-700 bg-white/50 p-3 rounded-lg border border-gray-200/50 italic mb-4">"{complaint.description}"</p>
-                        
-                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            {(!complaint.status || complaint.status === 'pending') && (
-                              <>
-                                <button 
-                                  onClick={() => handleUpdateComplaintStatus(complaint.id, 'accepted')}
-                                  className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
-                                >
-                                  <Check className="w-4 h-4" /> Accept / Verify
-                                </button>
-                                <button 
-                                  onClick={() => handleUpdateComplaintStatus(complaint.id, 'rejected')}
-                                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
-                                >
-                                  <X className="w-4 h-4" /> Reject / Dismiss
-                                </button>
-                              </>
-                            )}
+                        <div className="pl-8">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="font-bold text-gray-900">Complaint against Donor: <span className="font-semibold text-red-600">{complaint.donorName || 'Unknown'}</span></h4>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Target ID: <span className="font-mono">{complaint.donorId}</span> • 
+                                Reported by: {complaint.reporterName || complaint.reporterEmail || 'Anonymous'}
+                              </p>
+                            </div>
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              complaint.status === 'pending' ? 'bg-orange-200 text-orange-800' : 
+                              complaint.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {complaint.status || 'pending'}
+                            </span>
                           </div>
+                          <p className="text-sm text-gray-700 bg-white/50 p-3 rounded-lg border border-gray-200/50 italic mb-4">"{complaint.description}"</p>
                           
-                          <button 
-                            onClick={() => handleDeleteComplaintInitial(complaint.id)}
-                            className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all flex items-center justify-center border border-gray-100 sm:border-none"
-                            title="Delete Complaint"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                            <span className="sm:hidden ml-2 text-xs font-bold">Delete Complaint</span>
-                          </button>
+                          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              {(!complaint.status || complaint.status === 'pending') && (
+                                <>
+                                  <button 
+                                    onClick={() => handleUpdateComplaintStatus(complaint.id, 'accepted')}
+                                    className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    <Check className="w-4 h-4" /> Accept / Verify
+                                  </button>
+                                  <button 
+                                    onClick={() => handleUpdateComplaintStatus(complaint.id, 'rejected')}
+                                    className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    <Check className="w-4 h-4" /> Reject / Dismiss
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            
+                            <button 
+                              onClick={() => handleDeleteComplaintInitial(complaint.id)}
+                              className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all flex items-center justify-center border border-gray-100 sm:border-none"
+                              title="Delete Complaint"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                              <span className="sm:hidden ml-2 text-xs font-bold">Delete Complaint</span>
+                            </button>
+                          </div>
+                          {complaint.resolvedAt && (
+                            <p className="text-[10px] text-gray-400 mt-4">
+                              Resolved on: {new Date(complaint.resolvedAt).toLocaleString()}
+                            </p>
+                          )}
                         </div>
-                        {complaint.resolvedAt && (
-                          <p className="text-[10px] text-gray-400 mt-4">
-                            Resolved on: {new Date(complaint.resolvedAt).toLocaleString()}
-                          </p>
-                        )}
                       </div>
                     ))
                     );
@@ -496,6 +711,16 @@ const AdminPanel: React.FC = () => {
                   </div>
                   
                   <form onSubmit={handlePromoteByEmail} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                    {selectedUsers.length > 0 && (
+                      <button 
+                        type="button"
+                        onClick={handleBulkDeleteUsers}
+                        className="whitespace-nowrap px-4 py-3 sm:py-2 bg-red-100 text-red-600 rounded-xl text-sm font-bold hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete ({selectedUsers.length})
+                      </button>
+                    )}
                     <div className="relative flex-1 sm:flex-none">
                       <input 
                         type="email" 
@@ -525,7 +750,18 @@ const AdminPanel: React.FC = () => {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
-                        <th className="p-4 rounded-tl-lg font-semibold">User Name</th>
+                        <th className="p-4 rounded-tl-lg font-semibold w-10">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            checked={users.length > 0 && selectedUsers.length === users.filter(u => u.role !== 'admin').length && selectedUsers.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedUsers(users.filter(u => u.role !== 'admin').map(u => u.id));
+                              else setSelectedUsers([]);
+                            }}
+                          />
+                        </th>
+                        <th className="p-4 font-semibold">User Name</th>
                         <th className="p-4 font-semibold">Email Address</th>
                         <th className="p-4 font-semibold">Current Role</th>
                         <th className="p-4 rounded-tr-lg font-semibold text-right pr-8">Actions</th>
@@ -533,7 +769,19 @@ const AdminPanel: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {users.sort((a,b) => (a.role === 'admin' ? -1 : 1)).map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={user.id} className={`hover:bg-gray-50 transition-colors ${selectedUsers.includes(user.id) ? 'bg-red-50/30' : ''}`}>
+                          <td className="p-4">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                              checked={selectedUsers.includes(user.id)}
+                              disabled={user.role === 'admin'}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedUsers(prev => [...prev, user.id]);
+                                else setSelectedUsers(prev => prev.filter(id => id !== user.id));
+                              }}
+                            />
+                          </td>
                           <td className="p-4 font-bold text-gray-900">{user.name || 'Anonymous User'}</td>
                           <td className="p-4 text-gray-600 text-sm font-medium">{user.email}</td>
                           <td className="p-4">
@@ -543,7 +791,7 @@ const AdminPanel: React.FC = () => {
                               {user.role || 'user'}
                             </span>
                           </td>
-                          <td className="p-4 text-right pr-6">
+                          <td className="p-4 text-right pr-6 flex items-center justify-end gap-2">
                             {user.role === 'admin' ? (
                               <button 
                                 onClick={() => handleUpdateUserRole(user.id, 'user')}
@@ -556,12 +804,20 @@ const AdminPanel: React.FC = () => {
                             ) : (
                               <button 
                                 onClick={() => handleUpdateUserRole(user.id, 'admin')}
-                                className="px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ml-auto"
+                                className="px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
                                 title="Grant Admin Access"
                               >
                                 <ShieldCheck className="w-3.5 h-3.5" /> Make Admin
                               </button>
                             )}
+                            <button 
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                              title={user.role === 'admin' ? "Administrators cannot be deleted" : "Delete User"}
+                              disabled={user.role === 'admin'} 
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
                           </td>
                         </tr>
                       ))}

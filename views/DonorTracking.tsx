@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Navigation, User, Phone, MessageSquare, Heart, X, Eye, Calendar } from 'lucide-react';
+import { MapPin, Navigation, User, Phone, MessageSquare, Heart, X, Eye, Calendar, Image as ImageIcon, ZoomIn, ZoomOut, Download, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Donor, BloodType } from '../types';
 import { listenToDonors } from '../services/firebase';
 import { toast } from 'react-toastify';
@@ -9,6 +9,8 @@ const DonorTracking: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<BloodType | 'ALL'>('ALL');
   const [selectedDonor, setSelectedDonor] = useState<any>(null);
+  const [activeProofIndex, setActiveProofIndex] = useState<number | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
   useEffect(() => {
     const unsubscribe = listenToDonors((fetchedDonors) => {
@@ -25,6 +27,7 @@ const DonorTracking: React.FC = () => {
           lng: parseFloat(String(donor.coordinates?.lng || donor.location?.lng || donor.lng || 0)),
           address: donor.address || donor.location?.address || 'Unknown Location',
         },
+        healthProofs: donor.healthProofs || [],
         distance: donor.distance || 0,
       }));
       setDonors(mappedDonors);
@@ -140,7 +143,7 @@ const DonorTracking: React.FC = () => {
       {/* Donor Details Panel */}
       {selectedDonor && (
         <div className="fixed inset-0 bg-black/40 z-[999] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-[1000]">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-[1000] scrollbar-hide">
             {/* Header */}
             <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-4 md:p-6 flex items-center justify-between sticky top-0 z-10">
               <div className="flex items-center gap-3 md:gap-4">
@@ -210,6 +213,29 @@ const DonorTracking: React.FC = () => {
                 </div>
               </div>
 
+              {/* Health Verification Proofs Section */}
+              {selectedDonor.healthProofs && selectedDonor.healthProofs.length > 0 && (
+                <div className="pt-6 border-t border-gray-100">
+                  <div className="bg-red-50 rounded-2xl p-6 border border-red-100 flex flex-col items-center text-center">
+                    <div className="p-3 bg-white rounded-full shadow-sm mb-4">
+                      <ShieldCheck className="w-8 h-8 text-red-600" />
+                    </div>
+                    <h3 className="font-bold text-lg text-gray-900 mb-1">Health Records Verified</h3>
+                    <p className="text-sm text-gray-500 mb-4">This donor has provided {selectedDonor.healthProofs.length} health verification documents.</p>
+                    <button 
+                      onClick={() => {
+                        setActiveProofIndex(0);
+                        setZoomScale(1);
+                      }}
+                      className="w-full sm:w-auto px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-100"
+                    >
+                      <ImageIcon className="w-5 h-5" />
+                      View Verification Documents
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
                 <button 
@@ -243,6 +269,97 @@ const DonorTracking: React.FC = () => {
           </div>
         </div>
       )}
+
+      {activeProofIndex !== null && selectedDonor && (
+        <ProofViewer 
+          images={selectedDonor.healthProofs}
+          index={activeProofIndex}
+          onClose={() => setActiveProofIndex(null)}
+          onNext={() => setActiveProofIndex((activeProofIndex + 1) % selectedDonor.healthProofs.length)}
+          onPrev={() => setActiveProofIndex((activeProofIndex - 1 + selectedDonor.healthProofs.length) % selectedDonor.healthProofs.length)}
+          scale={zoomScale}
+          onZoomIn={() => setZoomScale(s => Math.min(s + 0.25, 3))}
+          onZoomOut={() => setZoomScale(s => Math.max(s - 0.25, 0.5))}
+        />
+      )}
+    </div>
+  );
+};
+
+const ProofViewer: React.FC<{ 
+  images: string[]; 
+  index: number; 
+  onClose: () => void; 
+  onNext: () => void; 
+  onPrev: () => void;
+  scale: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+}> = ({ images, index, onClose, onNext, onPrev, scale, onZoomIn, onZoomOut }) => {
+  const downloadImage = () => {
+    const link = document.createElement('a');
+    link.href = images[index];
+    link.download = `health-proof-${index + 1}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/95 z-[2000] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+      <div className="absolute top-4 inset-x-4 flex items-center justify-between z-20">
+        <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full text-white font-bold text-sm">
+          Verification Document {index + 1} / {images.length}
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onZoomOut} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
+            <ZoomOut className="w-6 h-6" />
+          </button>
+          <button onClick={onZoomIn} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
+            <ZoomIn className="w-6 h-6" />
+          </button>
+          <button onClick={downloadImage} className="p-2 bg-blue-600 hover:bg-blue-700 rounded-full text-white transition-all">
+            <Download className="w-6 h-6" />
+          </button>
+          <button onClick={onClose} className="p-2 bg-red-600 hover:bg-red-700 rounded-full text-white transition-all ml-2">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      </div>
+
+      <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+        {images.length > 1 && (
+          <>
+            <button 
+              onClick={onPrev}
+              className="absolute left-4 p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all z-20"
+            >
+              <ChevronLeft className="w-10 h-10" />
+            </button>
+            <button 
+              onClick={onNext}
+              className="absolute right-4 p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all z-20"
+            >
+              <ChevronRight className="w-10 h-10" />
+            </button>
+          </>
+        )}
+        
+        <div 
+          className="transition-transform duration-200 ease-out flex items-center justify-center"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <img 
+            src={images[index]} 
+            alt="Health Proof" 
+            className="max-w-[90vw] max-h-[80vh] object-contain shadow-2xl rounded-lg"
+          />
+        </div>
+      </div>
+      
+      <div className="absolute bottom-10 text-white/50 text-xs font-medium">
+        Use scroll or buttons to navigate • Support for Zoom & Download
+      </div>
     </div>
   );
 };

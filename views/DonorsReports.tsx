@@ -8,7 +8,8 @@ import {
   X,
   AlertCircle,
   Search,
-  ClipboardList
+  ClipboardList,
+  Image as ImageIcon
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -44,7 +45,7 @@ const DonorsReports: React.FC = () => {
   useEffect(() => {
     const q = query(collection(db, 'donors'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
-      const list: DonorRecord[] = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const list: DonorRecord[] = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
       setDonors(list);
       setLoadingDonors(false);
     }, (err) => {
@@ -274,8 +275,35 @@ const DonorsReports: React.FC = () => {
                       </div>
 
                       {isExpanded && (
-                        <div className="border-t border-gray-100 bg-gray-50 p-4">
-                          {donorComplaints.length === 0 ? (
+                        <div className="border-t border-gray-100 bg-gray-50 p-4 md:p-6 space-y-6">
+                          {/* Health Proof Documents */}
+                          {d.healthProofs && d.healthProofs.length > 0 && (
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4 text-red-600" />
+                                Health Verification Proofs
+                              </h4>
+                              <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                                {d.healthProofs.map((src: string, idx: number) => (
+                                  <div 
+                                    key={idx} 
+                                    className="relative min-w-[150px] h-24 md:h-32 rounded-lg overflow-hidden border border-gray-200 shadow-sm cursor-zoom-in hover:border-red-300 transition-all"
+                                    onClick={() => window.open(src, '_blank')}
+                                  >
+                                    <img src={src} alt={`Proof ${idx + 1}`} className="w-full h-full object-cover" />
+                                    <div className="absolute bottom-0 inset-x-0 bg-black/40 p-1.5 text-white text-[8px] md:text-[10px] font-bold">
+                                      Proof Document {idx + 1}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Complaints Section */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-bold text-gray-900">Recent Complaints</h4>
+                            {donorComplaints.length === 0 ? (
                             <div className="text-center py-4">
                               <p className="text-sm text-gray-500">No complaints for this donor</p>
                             </div>
@@ -304,6 +332,7 @@ const DonorsReports: React.FC = () => {
                               ))}
                             </div>
                           )}
+                          </div>
                         </div>
                       )}
                     </div>
